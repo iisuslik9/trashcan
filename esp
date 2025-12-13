@@ -1,0 +1,198 @@
+
+
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiManager.h>
+#include <ArduinoJson.h>
+WiFiClientSecure client;
+
+// Supabase 
+const char* SUPABASE_URL = "https://yndjuqvejwgxostadikf.supabase.co";
+const char* SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InluZGp1cXZlandneG9zdGFkaWtmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU2MDQzMzAsImV4cCI6MjA4MTE4MDMzMH0.qRzRvFjnKtpoWIOEhsGWsdqgfz0CexO7cZPxZZP6Tus";
+
+WiFiManager wifiManager;
+unsigned long lastSensorSend = 0;
+unsigned long lastControlCheck = 0;
+
+void setup() {
+  // Serial.begin(9600); // Связь с Arduino
+  
+  // // WiFi Manager - создаёт точку доступа для настройки
+  // wifiManager.autoConnect("SmartHome_Setup");
+  
+  // Serial.print("ESP подключён к WiFi. IP: ");
+  // Serial.println(WiFi.localIP());
+  // Serial.println("Готов к работе");
+
+  Serial.begin(115200);
+  delay(1000); // Даём Serial инициализироваться
+  
+  Serial.println("Запуск WiFiManager...");
+  
+  // Создаём точку доступа с таймаутом 5 минут
+  WiFiManager wifiManager;
+  wifiManager.setTimeout(300); // 5 минут на настройку
+  
+  // Запускаем с явным именем
+  if (!wifiManager.autoConnect("SmartHome_Setup", "12345678")) {
+    Serial.println("❌ Таймаут WiFiManager! Перезагрузка...");
+    delay(3000);
+    ESP.restart();
+    delay(5000);
+  }
+  
+  Serial.print("✅ WiFi подключён. IP: ");
+  Serial.println(WiFi.localIP());
+  
+}
+
+void loop() {
+  // Запрос данных у Arduino каждые 10 сек
+  if (millis() - lastSensorSend > 10000) {
+    requestSensorData();
+    lastSensorSend = millis();
+  }
+  
+  // Проверка команд управления каждые 2 сек
+  if (millis() - lastControlCheck > 2000) {
+    loadControlsFromSupabase();
+    lastControlCheck = millis();
+  }
+  
+  delay(100);
+}
+
+void requestSensorData() {
+  Serial.println("GET_DATA");
+  
+  // Ждём ответ от Arduino (2 сек)
+  String arduinoData = "";
+  unsigned long timeout = millis() + 2000;
+  while (millis() < timeout) {
+    if (Serial.available()) {
+      arduinoData = Serial.readStringUntil('\n');
+      arduinoData.trim();
+      break;
+    }
+    delay(10);
+  }
+  
+  if (arduinoData.startsWith("DATA:")) {
+    sendSensorDataToSupabase(arduinoData);
+  }
+}
+
+void sendSensorDataToSupabase(String arduinoData) {
+  // Парсим данные от Arduino
+  float temp_dht = parseFloatValue(arduinoData, "temp_dht");
+  float hum_dht = parseFloatValue(arduinoData, "hum_dht");
+  float temp_lm35 = parseFloatValue(arduinoData, "temp_lm35");
+  int light = parseIntValue(arduinoData, "light");
+  int led1 = parseIntValue(arduinoData, "led1");
+  int led2 = parseIntValue(arduinoData, "led2");
+  int led3 = parseIntValue(arduinoData, "led3");
+  int rgb_r = parseIntValue(arduinoData, "rgb_r");
+  int rgb_g = parseIntValue(arduinoData, "rgb_g");
+  int rgb_b = parseIntValue(arduinoData, "rgb_b");
+  bool strip = parseIntValue(arduinoData, "strip") > 0;
+  
+  // JSON для Supabase
+  DynamicJsonDocument doc(1024);
+  doc["temperature_dht"] = temp_dht;
+  doc["humidity_dht"] = hum_dht;
+  doc["temperature_lm35"] = temp_lm35;
+  doc["light_resistor"] = light;
+  doc["led1_brightness"] = led1;
+  doc["led2_brightness"] = led2;
+  doc["led3_brightness"] = led3;
+  doc["rgb_r"] = rgb_r;
+  doc["rgb_g"] = rgb_g;
+  doc["rgb_b"] = rgb_b;
+  doc["strip_state"] = strip;
+  
+  String json;
+  serializeJson(doc, json);
+  
+  // Отправка
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    client.setInsecure(); // отключаем SSL проверку
+    http.begin(client, String(SUPABASE_URL) + "/rest/v1/sensor_data");
+
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("apikey", SUPABASE_KEY);
+    http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
+    
+    int httpCode = http.POST(json);
+    if (httpCode == 201) {
+      Serial.println("✓ Данные отправлены в Supabase");
+    } else {
+      Serial.print("✗ Ошибка отправки: ");
+      Serial.println(httpCode);
+    }
+    http.end();
+  }
+}
+
+void loadControlsFromSupabase() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  
+
+  HTTPClient http;
+  //http.begin(String(SUPABASE_URL) + "/rest/v1/controls?select=*");
+  client.setInsecure(); // отключаем SSL проверку
+  http.begin(client, String(SUPABASE_URL) + "/rest/v1/controls?select=*");
+
+  http.addHeader("apikey", SUPABASE_KEY);
+  http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
+  
+  int httpCode = http.GET();
+  if (httpCode == 200) {
+    String payload = http.getString();
+    DynamicJsonDocument doc(1024);
+    deserializeJson(doc, payload);
+    
+    if (doc.size() > 0) {
+      JsonObject ctrl = doc[0];
+      int led1 = ctrl["led1"];
+      int led2 = ctrl["led2"];
+      int led3 = ctrl["led3"];
+      int r = ctrl["rgb_r"];
+      int g = ctrl["rgb_g"];
+      int b = ctrl["rgb_b"];
+      bool strip = ctrl["strip"];
+      bool buzzer = ctrl["buzzer"];
+      
+      // Отправляем команды Arduino
+      Serial.println("LED1:" + String(led1));
+      Serial.println("LED2:" + String(led2));
+      Serial.println("LED3:" + String(led3));
+      Serial.println("RGB:" + String(r) + "," + String(g) + "," + String(b));
+      Serial.println("STRIP:" + String(strip ? 1 : 0));
+      
+      if (buzzer) {
+        Serial.println("BUZZER");
+      }
+    }
+  }
+  http.end();
+}
+
+// Парсеры
+int parseIntValue(String data, String key) {
+  int pos = data.indexOf(key + "=");
+  if (pos == -1) return 0;
+  pos += key.length() + 1;
+  int end = data.indexOf(",", pos);
+  if (end == -1) end = data.length();
+  return data.substring(pos, end).toInt();
+}
+
+float parseFloatValue(String data, String key) {
+  int pos = data.indexOf(key + "=");
+  if (pos == -1) return 0.0;
+  pos += key.length() + 1;
+  int end = data.indexOf(",", pos);
+  if (end == -1) end = data.length();
+  return data.substring(pos, end).toFloat();
+}
