@@ -1,5 +1,3 @@
-
-
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 #include <WiFiManager.h>
@@ -7,7 +5,7 @@
 WiFiClientSecure client;
 
 // Supabase 
-const char* SUPABASE_URL = "https://yndjuqvejwgxostadikf.supabase.co";
+const char* SUPABASE_URL = "https://yndjuqvejwgxostadikf.supabase.co/";
 const char* SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InluZGp1cXZlandneG9zdGFkaWtmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU2MDQzMzAsImV4cCI6MjA4MTE4MDMzMH0.qRzRvFjnKtpoWIOEhsGWsdqgfz0CexO7cZPxZZP6Tus";
 
 WiFiManager wifiManager;
@@ -15,14 +13,6 @@ unsigned long lastSensorSend = 0;
 unsigned long lastControlCheck = 0;
 
 void setup() {
-  // Serial.begin(9600); // Связь с Arduino
-  
-  // // WiFi Manager - создаёт точку доступа для настройки
-  // wifiManager.autoConnect("SmartHome_Setup");
-  
-  // Serial.print("ESP подключён к WiFi. IP: ");
-  // Serial.println(WiFi.localIP());
-  // Serial.println("Готов к работе");
 
   Serial.begin(115200);
   delay(1000); // Даём Serial инициализироваться
@@ -30,7 +20,7 @@ void setup() {
   Serial.println("Запуск WiFiManager...");
   
   // Создаём точку доступа с таймаутом 5 минут
-  WiFiManager wifiManager;
+  //WiFiManager wifiManager;
   wifiManager.setTimeout(300); // 5 минут на настройку
   
   // Запускаем с явным именем
