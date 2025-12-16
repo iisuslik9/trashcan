@@ -1,0 +1,137 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiManager.h>
+#include <DHT.h>
+#include <ArduinoJson.h>
+
+// === ПИНЫ ===
+#define DHT_PIN D4        // DHT11 Data
+#define DHT_TYPE DHT11
+#define PHOTO_PIN A0      // Фоторезистор
+#define LED1_PIN D1       // LED1
+#define LED2_PIN D2       // LED2
+#define LED3_PIN D5       // LED3
+#define RGB_R_PIN D6      // RGB R
+#define RGB_G_PIN D7      // RGB G
+#define RGB_B_PIN D8      // RGB B
+#define BUZZER_PIN D0     // Активный зуммер
+#define RELAY_PIN D3      // Реле (лента)
+
+// === SUPABASE ===
+const char* SUPABASE_URL = "https://yndjuqvejwgxostadikf.supabase.co";
+const char* SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InluZGp1cXZlandneG9zdGFkaWtmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU2MDQzMzAsImV4cCI6MjA4MTE4MDMzMH0.qRzRvFjnKtpoWIOEhsGWsdqgfz0CexO7cZPxZZP6Tus";
+
+DHT dht(DHT_PIN, DHT_TYPE);
+WiFiManager wifiManager;
+
+// Текущие значения
+int led1_val = 0, led2_val = 0, led3_val = 0;
+int rgb_r = 0, rgb_g = 0, rgb_b = 0;
+bool strip_state = false, buzzer_state = false;
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Инициализация пинов
+  pinMode(LED1_PIN, OUTPUT);
+  pinMode(LED2_PIN, OUTPUT);
+  pinMode(LED3_PIN, OUTPUT);
+  pinMode(RGB_R_PIN, OUTPUT);
+  pinMode(RGB_G_PIN, OUTPUT);
+  pinMode(RGB_B_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(RELAY_PIN, OUTPUT);
+  
+  analogWriteRange(255); // PWM 0-255
+  
+  dht.begin();
+  
+  // WiFi Manager (AP для настройки сети)
+  wifiManager.autoConnect("SmartHome_NodeMCU");
+  
+  Serial.println("NodeMCU подключен! IP: " + WiFi.localIP().toString());
+}
+
+void loop() {
+  // Читаем датчики
+  float temp_dht = dht.readTemperature();
+  float hum_dht = dht.readHumidity();
+  int light = analogRead(PHOTO_PIN); // 0-1023
+  
+  // Применяем команды управления
+  analogWrite(LED1_PIN, led1_val);
+  analogWrite(LED2_PIN, led2_val);
+  analogWrite(LED3_PIN, led3_val);
+  analogWrite(RGB_R_PIN, rgb_r);
+  analogWrite(RGB_G_PIN, rgb_g);
+  analogWrite(RGB_B_PIN, rgb_b);
+  digitalWrite(BUZZER_PIN, buzzer_state);
+  digitalWrite(RELAY_PIN, strip_state ? HIGH : LOW); // HIGH = включить реле
+
+  // Отправляем данные в Supabase
+  sendSensorData(temp_dht, hum_dht, light);
+  
+  // Читаем команды из Supabase
+  loadControls();
+  
+  delay(10000); // Каждые 10 сек
+}
+
+void sendSensorData(float temp_dht, float hum_dht, int light) {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(String(SUPABASE_URL) + "/rest/v1/sensor_data");
+    http.addHeader("apikey", SUPABASE_KEY);
+    http.addHeader("Authorization", "Bearer " + String(SUPABASE_KEY));
+    http.addHeader("Content-Type", "application/json");
+    
+    DynamicJsonDocument doc(512);
+    doc["temperature_dht"] = temp_dht;
+    doc["humidity_dht"] = hum_dht;
+    doc["light_resistor"] = light;
+    doc["led1_brightness"] = led1_val;
+    doc["led2_brightness"] = led2_val;
+    doc["led3_brightness"] = led3_val;
+    doc["rgb_r"] = rgb_r;
+    doc["rgb_g"] = rgb_g;
+    doc["rgb_b"] = rgb_b;
+    doc["strip_state"] = strip_state;
+    
+    String json;
+    serializeJson(doc, json);
+    
+    int code = http.POST(json);
+    Serial.println("Supabase: " + String(code));
+    http.end();
+  }
+}
+
+void loadControls() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(String(SUPABASE_URL) + "/rest/v1/controls");
+    http.addHeader("apikey", SUPABASE_KEY);
+    http.addHeader("Authorization", "Bearer " + String(SUPABASE_KEY));
+    
+    int code = http.GET();
+    if (code == 200) {
+      String payload = http.getString();
+      DynamicJsonDocument doc(512);
+      deserializeJson(doc, payload);
+      
+      if (doc.size() > 0) {
+        led1_val = doc[0]["led1"];
+        led2_val = doc[0]["led2"];
+        led3_val = doc[0]["led3"];
+        rgb_r = doc[0]["rgb_r"];
+        rgb_g = doc[0]["rgb_g"];
+        rgb_b = doc[0]["rgb_b"];
+        strip_state = doc[0]["strip"];
+        buzzer_state = doc[0]["buzzer"];
+        
+        Serial.println("Команды: LED1=" + String(led1_val) + " LED2=" + String(led2_val));
+      }
+    }
+    http.end();
+  }
+}
