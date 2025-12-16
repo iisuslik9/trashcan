@@ -5,17 +5,17 @@
 #include <ArduinoJson.h>
 
 // === ПИНЫ ===
-#define DHT_PIN D4        // DHT11 Data
+#define DHT_PIN D0        // DHT11 Data
 #define DHT_TYPE DHT11
 #define PHOTO_PIN A0      // Фоторезистор
-#define LED1_PIN D1       // LED1
-#define LED2_PIN D2       // LED2
-#define LED3_PIN D5       // LED3
-#define RGB_R_PIN D6      // RGB R
-#define RGB_G_PIN D7      // RGB G
-#define RGB_B_PIN D8      // RGB B
-#define BUZZER_PIN D0     // Активный зуммер
-#define RELAY_PIN D3      // Реле (лента)
+#define LED1_PIN D5       // LED1
+#define LED2_PIN D6       // LED2
+#define LED3_PIN D7       // LED3
+#define RGB_R_PIN D1      // RGB R
+#define RGB_G_PIN D2      // RGB G
+#define RGB_B_PIN D3      // RGB B
+#define BUZZER_PIN D4     // Активный зуммер
+#define RELAY_PIN D8      // Реле (лента)
 
 // === SUPABASE ===
 const char* SUPABASE_URL = "https://yndjuqvejwgxostadikf.supabase.co";
@@ -31,12 +31,12 @@ bool strip_state = false, buzzer_state = false;
 bool manualOff = false;  // true = лента выключена вручную
 
 // Автоматика по фоторезистору
-const int LIGHT_THRESHOLD = 300;  // порог темноты (подберите под вашу комнату)
+const int LIGHT_THRESHOLD = 300;  // порог темноты 
 const int MIN_DURATION_MS = 10000; // мин. время между авто-включениями (10 сек)
 
 // Таймер ручного включения
 unsigned long timerStart = 0;
-const unsigned long TIMER_DURATION = 30 * 60 * 1000; // 30 минут 
+int timer_hours = 0, timer_minutes = 30;  // Настраиваемое время таймера
 bool timerActive = false;
 
 
@@ -71,9 +71,8 @@ void loop() {
   float hum_dht = dht.readHumidity();
   int light = analogRead(PHOTO_PIN); // 0-1023 (0=темно, 1023=светло)
   
-  Serial.print("°C Темп: "); Serial.print(temp_dht);
-  Serial.print("% Влаж: "); Serial.print(hum_dht);
-  Serial.print("Свет: "); Serial.println(light);
+  Serial.printf(" %.1f°C |  %.1f%% |  %d | Лента: %s\n", 
+                temp_dht, hum_dht, light, strip_state ? "ВКЛ" : "ВЫКЛ");
 
   // === АВТОМАТИКА ЛЕНТЫ ПО ФОТОРЕЗИСТОРУ ===
   static unsigned long lastAutoChange = 0;
@@ -172,6 +171,12 @@ void loadControls() {
         rgb_b = doc[0]["rgb_b"];
         bool newStrip = doc[0]["strip"];
         buzzer_state = doc[0]["buzzer"];
+        timer_hours = doc[0]["timer_hours"] | 0;
+        timer_minutes = doc[0]["timer_minutes"] | 30;
+    
+    // Вычисляем длительность таймера в миллисекундах
+    unsigned long newTimerDuration = (timer_hours * 3600UL + timer_minutes * 60UL) * 1000UL;
+    
 
         // === НОВЫЙ ТАЙМЕР ===
         if (newStrip && !strip_state) {  // ВКЛ в интерфейсе
@@ -179,7 +184,7 @@ void loadControls() {
           timerStart = millis();
           manualOff = false;
           strip_state = true;
-          Serial.println("⏳ Ручное ВКЛ + 30 мин таймер");
+          Serial.println("⏳ Ручное ВКЛ +  таймер");
         } 
         else if (!newStrip && strip_state && !timerActive) {
           // Ручное ВЫКЛ (не по таймеру)
@@ -188,6 +193,9 @@ void loadControls() {
           Serial.println("🖐️ Ручное выключение (заблокирована автоматика)");
         }
 
+        Serial.print(" Таймер: "); 
+        Serial.print(timer_hours); Serial.print(":"); 
+        Serial.print(timer_minutes); Serial.println("ч:мин");
         Serial.print("Лента: "); Serial.print(strip_state ? "ВКЛ" : "ВЫКЛ");
         if (timerActive) Serial.print(" (таймер " + String((TIMER_DURATION - (millis() - timerStart)) / 1000) + "с)");
         Serial.println();
