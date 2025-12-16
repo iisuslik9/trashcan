@@ -39,6 +39,13 @@ unsigned long timerStart = 0;
 int timer_hours = 0, timer_minutes = 30;  // Настраиваемое время таймера
 bool timerActive = false;
 
+bool lastBuzzerState = false;
+void playBeep() {
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(BUZZER_PIN, HIGH); delay(200);
+    digitalWrite(BUZZER_PIN, LOW);  delay(150);
+  }
+}
 
 void setup() {
   Serial.begin(115200);
@@ -54,6 +61,7 @@ void setup() {
   pinMode(RELAY_PIN, OUTPUT);
   
   analogWriteRange(255); // PWM 0-255
+  digitalWrite(BUZZER_PIN, LOW);
   
   dht.begin();
   
@@ -115,6 +123,13 @@ void loop() {
   digitalWrite(BUZZER_PIN, buzzer_state ? HIGH : LOW);
   digitalWrite(RELAY_PIN, strip_state ? HIGH : LOW); // HIGH = реле ВКЛ
 
+  if (buzzer_state && !lastBuzzerState) {
+    Serial.println("🎵 Играем beep на зуммере!");
+    playBeep();  // мелодия ТОЛЬКО при включении кнопки
+  }
+  digitalWrite(BUZZER_PIN, LOW);  // всегда выключен после мелодии
+  lastBuzzerState = buzzer_state;
+  
   // Отправляем данные в Supabase
   sendSensorData(temp_dht, hum_dht, light);
   
