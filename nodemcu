@@ -34,6 +34,12 @@ bool manualOff = false;  // true = лента выключена вручную
 const int LIGHT_THRESHOLD = 300;  // порог темноты (подберите под вашу комнату)
 const int MIN_DURATION_MS = 10000; // мин. время между авто-включениями (10 сек)
 
+// Таймер ручного включения
+unsigned long timerStart = 0;
+const unsigned long TIMER_DURATION = 30 * 60 * 1000; // 30 минут в миллисекундах
+bool timerActive = false;
+
+
 void setup() {
   Serial.begin(115200);
   
