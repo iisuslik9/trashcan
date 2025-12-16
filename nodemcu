@@ -36,7 +36,7 @@ const int MIN_DURATION_MS = 10000; // мин. время между авто-в�
 
 // Таймер ручного включения
 unsigned long timerStart = 0;
-const unsigned long TIMER_DURATION = 30 * 60 * 1000; // 30 минут в миллисекундах
+const unsigned long TIMER_DURATION = 30 * 60 * 1000; // 30 минут 
 bool timerActive = false;
 
 
@@ -60,9 +60,9 @@ void setup() {
   // WiFi Manager (создаёт точку доступа для настройки)
   wifiManager.autoConnect("SmartHome_NodeMCU");
   
-  Serial.println("✅ NodeMCU подключен! IP: " + WiFi.localIP().toString());
-  Serial.println("📡 Отправка данных каждую секунду");
-  Serial.println("🔄 Автоматика ленты по фоторезистору");
+  Serial.println(" NodeMCU подключен! IP: " + WiFi.localIP().toString());
+  Serial.println(" Отправка данных каждую секунду");
+  Serial.println(" Автоматика ленты по фоторезистору");
 }
 
 void loop() {
@@ -173,22 +173,28 @@ void loadControls() {
         bool newStrip = doc[0]["strip"];
         buzzer_state = doc[0]["buzzer"];
 
-        // ЛОГИКА РУЧНОГО УПРАВЛЕНИЯ
-        if (!newStrip && strip_state) {
-          // В интерфейсе выключили, но лента была включена → ручное выключение
-          manualOff = true;
-          Serial.println("🖐️ Ручное выключение ленты");
-        } 
-        else if (newStrip) {
-          // В интерфейсе включили → разрешаем автоматику
+        // === НОВЫЙ ТАЙМЕР ===
+        if (newStrip && !strip_state) {  // ВКЛ в интерфейсе
+          timerActive = true;
+          timerStart = millis();
           manualOff = false;
-          Serial.println("🔄 Автоматика разрешена");
+          strip_state = true;
+          Serial.println("⏳ Ручное ВКЛ + 30 мин таймер");
+        } 
+        else if (!newStrip && strip_state && !timerActive) {
+          // Ручное ВЫКЛ (не по таймеру)
+          manualOff = true;
+          strip_state = false;
+          Serial.println("🖐️ Ручное выключение (заблокирована автоматика)");
         }
 
-        strip_state = newStrip;
+        Serial.print("Лента: "); Serial.print(strip_state ? "ВКЛ" : "ВЫКЛ");
+        if (timerActive) Serial.print(" (таймер " + String((TIMER_DURATION - (millis() - timerStart)) / 1000) + "с)");
+        Serial.println();
 
-        Serial.print("🎛️ LED1:"); Serial.print(led1_val);
+        Serial.print(" LED1:"); Serial.print(led1_val);
         Serial.print(" LED2:"); Serial.print(led2_val);
+        Serial.print(" LED3:"); Serial.print(led3_val);
         Serial.print(" RGB:"); Serial.print(rgb_r); Serial.print(","); Serial.print(rgb_g); Serial.print(","); Serial.println(rgb_b);
       }
     } else {
