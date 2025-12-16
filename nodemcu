@@ -74,6 +74,14 @@ void loop() {
   Serial.printf(" %.1f°C |  %.1f%% |  %d | Лента: %s\n", 
                 temp_dht, hum_dht, light, strip_state ? "ВКЛ" : "ВЫКЛ");
 
+ // === ПРОВЕРКА ТАЙМЕРА ===
+  unsigned long timerDuration = (timer_hours * 3600UL + timer_minutes * 60UL) * 1000UL;
+  if (timerActive && (millis() - timerStart >= timerDuration)) {
+    timerActive = false;
+    strip_state = false;
+    Serial.println("Таймер истёк → ЛЕНТА ВЫКЛ");
+  }
+
   // === АВТОМАТИКА ЛЕНТЫ ПО ФОТОРЕЗИСТОРУ ===
   static unsigned long lastAutoChange = 0;
   static bool wasDark = false;
@@ -81,13 +89,13 @@ void loop() {
   if (millis() - lastAutoChange > MIN_DURATION_MS) {
     bool isDark = (light < LIGHT_THRESHOLD);
     
-    // Стало темно И лента выключена И НЕ выключена вручную → ВКЛ
+
     if (isDark && !strip_state && !manualOff) {
       strip_state = true;
       lastAutoChange = millis();
       Serial.println("🌙 АВТО: включаем ленту (темно)");
     }
-    // Стало светло И лента включена → ВЫКЛ
+
     else if (!isDark && strip_state) {
       strip_state = false;
       lastAutoChange = millis();
@@ -135,6 +143,10 @@ void sendSensorData(float temp_dht, float hum_dht, int light) {
     doc["rgb_g"] = rgb_g;
     doc["rgb_b"] = rgb_b;
     doc["strip_state"] = strip_state;
+    doc["buzzer"] = buzzer_state;
+    doc["timer_h"] = timer_hours;
+    doc["timer_m"] = timer_minutes;
+    doc["timer_active"] = timerActive;
     
     String json;
     serializeJson(doc, json);
@@ -163,47 +175,41 @@ void loadControls() {
       deserializeJson(doc, payload);
       
       if (doc.size() > 0) {
-        led1_val = doc[0]["led1"];
-        led2_val = doc[0]["led2"];
-        led3_val = doc[0]["led3"];
-        rgb_r = doc[0]["rgb_r"];
-        rgb_g = doc[0]["rgb_g"];
-        rgb_b = doc[0]["rgb_b"];
-        bool newStrip = doc[0]["strip"];
-        buzzer_state = doc[0]["buzzer"];
+        led1_val = doc[0]["led1"] | 0;
+        led2_val = doc[0]["led2"] | 0;
+        led3_val = doc[0]["led3"] | 0;
+        rgb_r = doc[0]["rgb_r"] | 0;
+        rgb_g = doc[0]["rgb_g"] | 0;
+        rgb_b = doc[0]["rgb_b"] | 0;
+        bool newStrip = doc[0]["strip"] | false;
+        buzzer_state = doc[0]["buzzer"] | false;
         timer_hours = doc[0]["timer_hours"] | 0;
         timer_minutes = doc[0]["timer_minutes"] | 30;
     
-    // Вычисляем длительность таймера в миллисекундах
-    unsigned long newTimerDuration = (timer_hours * 3600UL + timer_minutes * 60UL) * 1000UL;
-    
 
-        // === НОВЫЙ ТАЙМЕР ===
+        // === Ручной ТАЙМЕР ===
         if (newStrip && !strip_state) {  // ВКЛ в интерфейсе
           timerActive = true;
           timerStart = millis();
           manualOff = false;
           strip_state = true;
-          Serial.println("⏳ Ручное ВКЛ +  таймер");
+           Serial.printf("⏳ Ручное ВКЛ → Таймер %d:%02d\n", timer_hours, timer_minutes);
         } 
         else if (!newStrip && strip_state && !timerActive) {
-          // Ручное ВЫКЛ (не по таймеру)
           manualOff = true;
           strip_state = false;
           Serial.println("🖐️ Ручное выключение (заблокирована автоматика)");
+        } else {
+          strip_state = newStrip;
         }
 
-        Serial.print(" Таймер: "); 
-        Serial.print(timer_hours); Serial.print(":"); 
-        Serial.print(timer_minutes); Serial.println("ч:мин");
-        Serial.print("Лента: "); Serial.print(strip_state ? "ВКЛ" : "ВЫКЛ");
-        if (timerActive) Serial.print(" (таймер " + String((TIMER_DURATION - (millis() - timerStart)) / 1000) + "с)");
-        Serial.println();
 
-        Serial.print(" LED1:"); Serial.print(led1_val);
-        Serial.print(" LED2:"); Serial.print(led2_val);
-        Serial.print(" LED3:"); Serial.print(led3_val);
-        Serial.print(" RGB:"); Serial.print(rgb_r); Serial.print(","); Serial.print(rgb_g); Serial.print(","); Serial.println(rgb_b);
+        Serial.printf("🎛️ LED:%d,%d,%d | RGB:%d,%d,%d | Таймер:%d:%02d\n", 
+                      led1_val, led2_val, led3_val, rgb_r, rgb_g, rgb_b, 
+                      timer_hours, timer_minutes);
+        Serial.print("Лента: "); Serial.print(strip_state ? "ВКЛ" : "ВЫКЛ");
+
+
       }
     } else {
       Serial.println("❌ Ошибка чтения controls: " + String(code));
