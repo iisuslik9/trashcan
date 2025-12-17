@@ -148,9 +148,9 @@ void sendSensorData(float temp_dht, float hum_dht, int light) {
     http.addHeader("Content-Type", "application/json");
     
     DynamicJsonDocument doc(512);
-    doc["temperature_dht"] = temp_dht;
-    doc["humidity_dht"] = hum_dht;
-    doc["light_resistor"] = light;
+    doc["temperature"] = temp_dht;     
+    doc["humidity"] = hum_dht;         
+    doc["light"] = light; 
     doc["led1_brightness"] = led1_val;
     doc["led2_brightness"] = led2_val;
     doc["led3_brightness"] = led3_val;
