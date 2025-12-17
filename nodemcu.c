@@ -142,10 +142,12 @@ void loop() {
 
 void sendSensorData(float temp_dht, float hum_dht, int light) {
   if (WiFi.status() == WL_CONNECTED) {
+    WiFiClientSecure client;
+    client.setInsecure();
     HTTPClient http;
-    http.begin(String(SUPABASE_URL) + "/rest/v1/sensor_data");
+    http.begin(client, String(SUPABASE_URL) + "/rest/v1/sensor_data?prefer=return=minimal");
     http.addHeader("apikey", SUPABASE_KEY);
-    http.addHeader("Authorization", "Bearer " + String(SUPABASE_KEY));
+    //http.addHeader("Authorization", "Bearer " + String(SUPABASE_KEY));
     http.addHeader("Content-Type", "application/json");
     
     DynamicJsonDocument doc(512);
@@ -180,6 +182,7 @@ void sendSensorData(float temp_dht, float hum_dht, int light) {
 void loadControls() {
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
+    
     http.begin(String(SUPABASE_URL) + "/rest/v1/controls");
     http.addHeader("apikey", SUPABASE_KEY);
     http.addHeader("Authorization", "Bearer " + String(SUPABASE_KEY));
