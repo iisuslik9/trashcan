@@ -24,6 +24,7 @@ const char* SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXB
 DHT dht(DHT_PIN, DHT_TYPE);
 WiFiManager wifiManager;
 
+
 // Текущие значения управления
 int led1_val = 0, led2_val = 0, led3_val = 0;
 int rgb_r = 0, rgb_g = 0, rgb_b = 0;
@@ -151,16 +152,16 @@ void sendSensorData(float temp_dht, float hum_dht, int light) {
     doc["temperature"] = temp_dht;     
     doc["humidity"] = hum_dht;         
     doc["light"] = light; 
-    doc["led1_brightness"] = led1_val;
-    doc["led2_brightness"] = led2_val;
-    doc["led3_brightness"] = led3_val;
+    doc["led1"] = led1_val;
+    doc["led2"] = led2_val;
+    doc["led3"] = led3_val;
     doc["rgb_r"] = rgb_r;
     doc["rgb_g"] = rgb_g;
     doc["rgb_b"] = rgb_b;
-    doc["strip_state"] = strip_state;
+    doc["strip"] = strip_state;
     doc["buzzer"] = buzzer_state;
-    doc["timer_h"] = timer_hours;
-    doc["timer_m"] = timer_minutes;
+    doc["timer_hours"] = timer_hours;
+    doc["timer_minutes"] = timer_minutes;
     doc["timer_active"] = timerActive;
     
     String json;
