@@ -5,23 +5,26 @@
 #include <ArduinoJson.h>
 
 // === ПИНЫ ===
-#define DHT_PIN D0        // DHT11 Data
-#define DHT_TYPE DHT11
-#define PHOTO_PIN A0      // Фоторезистор
-#define LED1_PIN D5       // LED1
-#define LED2_PIN D6       // LED2
-#define LED3_PIN D7       // LED3
-#define RGB_R_PIN D1      // RGB R
-#define RGB_G_PIN D2      // RGB G
-#define RGB_B_PIN D3      // RGB B
-#define BUZZER_PIN D4     // Активный зуммер
-#define RELAY_PIN D8      // Реле (лента)
+#define DHTPIN 16       // D0 = GPIO16
+#define DHTTYPE DHT11
+#define PHOTO_PIN A0     // 
+#define LED1_PIN 14      // D5 = GPIO14
+#define LED2_PIN 12      // D6 = GPIO12  
+#define LED3_PIN 13      // D7 = GPIO13
+#define RGB_R_PIN 5      // D1 = GPIO5 (RX)
+#define RGB_G_PIN 4      // D2 = GPIO4 (SD2)
+#define RGB_B_PIN 0      // D3 = GPIO0 (RX)
+#define BUZZER_PIN 2     // D4 = GPIO2 (SD3)
+#define RELAY_PIN 15     // D8 = GPIO15
+
+WiFiClientSecure client;
+
 
 // === SUPABASE ===
 const char* SUPABASE_URL = "https://yndjuqvejwgxostadikf.supabase.co";
 const char* SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InluZGp1cXZlandneG9zdGFkaWtmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU2MDQzMzAsImV4cCI6MjA4MTE4MDMzMH0.qRzRvFjnKtpoWIOEhsGWsdqgfz0CexO7cZPxZZP6Tus";
 
-DHT dht(DHT_PIN, DHT_TYPE);
+DHT dht(DHTPIN, DHTTYPE);
 WiFiManager wifiManager;
 
 
@@ -68,6 +71,7 @@ void setup() {
   
   // WiFi Manager (создаёт точку доступа для настройки)
   wifiManager.autoConnect("SmartHome_NodeMCU");
+  client.setInsecure();  
   
   Serial.println(" NodeMCU подключен! IP: " + WiFi.localIP().toString());
   Serial.println(" Отправка данных каждую секунду");
@@ -142,8 +146,8 @@ void loop() {
 
 void sendSensorData(float temp_dht, float hum_dht, int light) {
   if (WiFi.status() == WL_CONNECTED) {
-    WiFiClientSecure client;
-    client.setInsecure();
+    //WiFiClientSecure client;
+    //client.setInsecure();
     HTTPClient http;
     http.begin(client, String(SUPABASE_URL) + "/rest/v1/sensor_data?prefer=return=minimal");
     http.addHeader("apikey", SUPABASE_KEY);
@@ -183,7 +187,8 @@ void loadControls() {
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
     
-    http.begin(String(SUPABASE_URL) + "/rest/v1/controls");
+    http.begin(client, String(SUPABASE_URL) + "/rest/v1/controls?prefer=return=minimal");
+
     http.addHeader("apikey", SUPABASE_KEY);
     http.addHeader("Authorization", "Bearer " + String(SUPABASE_KEY));
     
@@ -236,4 +241,3 @@ void loadControls() {
     http.end();
   }
 }
-
