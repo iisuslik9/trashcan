@@ -18,6 +18,8 @@
 #define RELAY_PIN 15     // D8 = GPIO15
 
 WiFiClientSecure client;
+WiFiClient wifiClient;  // Для HTTP тестов
+
 
 
 // === SUPABASE ===
@@ -51,8 +53,11 @@ void playBeep() {
   }
 }
 
+
+
 void setup() {
-  Serial.begin(115200);
+  //Serial.begin(115200);
+  Serial.begin(74880);
   
   // Инициализация пинов
   pinMode(LED1_PIN, OUTPUT);
@@ -79,10 +84,34 @@ void setup() {
 }
 
 void loop() {
+
+static unsigned long lastTest = 0;
+  if (millis() - lastTest > 10000) {
+    testInternet();
+    lastTest = millis();
+  }
+
+
+
   // Читаем датчики
+  // ПРОВЕРКА DHT на NaN
   float temp_dht = dht.readTemperature();
   float hum_dht = dht.readHumidity();
+  
+  // Фильтр NaN
+  if (isnan(temp_dht) || isnan(hum_dht)) {
+    Serial.println("❌ DHT ошибка - пропускаем");
+    temp_dht = 25.0;  // дефолт
+    hum_dht = 50.0;
+  }
+  
   int light = analogRead(PHOTO_PIN); // 0-1023 (0=темно, 1023=светло)
+  
+  Serial.printf("T:%.1f°C H:%.1f%% L:%d\n", temp_dht, hum_dht, light);
+  if (isnan(temp_dht) || temp_dht > 50 || temp_dht < -10) temp_dht = 25.0;
+  if (isnan(hum_dht) || hum_dht > 100 || hum_dht < 0) hum_dht = 50.0;
+  if (light < 0 || light > 1023) light = 512;
+
   
   Serial.printf(" %.1f°C |  %.1f%% |  %d | Лента: %s\n", 
                 temp_dht, hum_dht, light, strip_state ? "ВКЛ" : "ВЫКЛ");
@@ -141,7 +170,7 @@ void loop() {
   // Читаем команды из Supabase
   loadControls();
   
-  delay(1000); // Цикл каждую секунду
+  delay(2000); // Цикл каждую 2 секунду
 }
 
 void sendSensorData(float temp_dht, float hum_dht, int light) {
@@ -149,26 +178,27 @@ void sendSensorData(float temp_dht, float hum_dht, int light) {
     //WiFiClientSecure client;
     //client.setInsecure();
     HTTPClient http;
-    http.begin(client, String(SUPABASE_URL) + "/rest/v1/sensor_data?prefer=return=minimal");
+    http.begin(client, String(SUPABASE_URL) + "/rest/v1/sensor_data");
     http.addHeader("apikey", SUPABASE_KEY);
     //http.addHeader("Authorization", "Bearer " + String(SUPABASE_KEY));
     http.addHeader("Content-Type", "application/json");
+    http.addHeader("Prefer", "return=minimal");
     
-    DynamicJsonDocument doc(512);
-    doc["temperature"] = temp_dht;     
-    doc["humidity"] = hum_dht;         
+    DynamicJsonDocument doc(1024);
+    doc["temperature"] = (double)temp_dht;     
+    doc["humidity"] = (double)hum_dht;         
     doc["light"] = light; 
-    doc["led1"] = led1_val;
-    doc["led2"] = led2_val;
-    doc["led3"] = led3_val;
-    doc["rgb_r"] = rgb_r;
-    doc["rgb_g"] = rgb_g;
-    doc["rgb_b"] = rgb_b;
+    /*doc["led1"] = (int)led1_val;
+    doc["led2"] = (int)led2_val;
+    doc["led3"] = (int)led3_val;
+    doc["rgb_r"] = (int)rgb_r;
+    doc["rgb_g"] = (int)rgb_g;
+    doc["rgb_b"] = (int)rgb_b;*/
     doc["strip"] = strip_state;
-    doc["buzzer"] = buzzer_state;
-    doc["timer_hours"] = timer_hours;
-    doc["timer_minutes"] = timer_minutes;
-    doc["timer_active"] = timerActive;
+    //doc["buzzer"] = buzzer_state;
+    doc["timer_h"] = timer_hours;
+    doc["timer_m"] = timer_minutes;
+    //doc["timer_active"] = timerActive;
     
     String json;
     serializeJson(doc, json);
@@ -187,7 +217,9 @@ void loadControls() {
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
     
-    http.begin(client, String(SUPABASE_URL) + "/rest/v1/controls?prefer=return=minimal");
+    //http.begin(client, String(SUPABASE_URL) + "/rest/v1/controls?eq=id.eq.1");
+    //http.begin(client, String(SUPABASE_URL) + "/rest/v1/controls?eq=id=1");
+    http.begin(client, String(SUPABASE_URL) + "/rest/v1/controls?select=*");
 
     http.addHeader("apikey", SUPABASE_KEY);
     http.addHeader("Authorization", "Bearer " + String(SUPABASE_KEY));
@@ -228,7 +260,7 @@ void loadControls() {
         }
 
 
-        Serial.printf("🎛️ LED:%d,%d,%d | RGB:%d,%d,%d | Таймер:%d:%02d\n", 
+        Serial.printf("LED:%d,%d,%d | RGB:%d,%d,%d | Таймер:%d:%02d\n", 
                       led1_val, led2_val, led3_val, rgb_r, rgb_g, rgb_b, 
                       timer_hours, timer_minutes);
         Serial.print("Лента: "); Serial.print(strip_state ? "ВКЛ" : "ВЫКЛ");
@@ -241,3 +273,16 @@ void loadControls() {
     http.end();
   }
 }
+
+void testInternet() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(wifiClient, "http://httpbin.org/ip");  // ✅ WiFiClient + URL
+    int code = http.GET();
+    Serial.printf("🌐 Internet: %d\n", code);
+    http.end();
+  } else {
+    Serial.println("❌ WiFi отключён");
+  }
+}
+
