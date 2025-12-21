@@ -30,11 +30,15 @@ DHT dht(DHTPIN, DHTTYPE);
 WiFiManager wifiManager;
 
 
+
+
+
 // Текущие значения управления
 int led1_val = 0, led2_val = 0, led3_val = 0;
 int rgb_r = 0, rgb_g = 0, rgb_b = 0;
 bool strip_state = false, buzzer_state = false;
 bool manualOff = false;  // true = лента выключена вручную
+bool buzzerTriggered = false; 
 
 // Автоматика по фоторезистору
 const int LIGHT_THRESHOLD = 300;  // порог темноты 
@@ -44,6 +48,10 @@ const int MIN_DURATION_MS = 10000; // мин. время между авто-в�
 unsigned long timerStart = 0;
 int timer_hours = 0, timer_minutes = 30;  // Настраиваемое время таймера
 bool timerActive = false;
+
+
+
+
 
 bool lastBuzzerState = false;
 void playBeep() {
@@ -70,7 +78,7 @@ void setup() {
   pinMode(RELAY_PIN, OUTPUT);
   
   analogWriteRange(255); // PWM 0-255
-  digitalWrite(BUZZER_PIN, LOW);
+  //digitalWrite(BUZZER_PIN, LOW);
   
   dht.begin();
   
@@ -86,18 +94,13 @@ void setup() {
 void loop() {
 
 static unsigned long lastTest = 0;
-  if (millis() - lastTest > 10000) {
-    testInternet();
-    lastTest = millis();
-  }
-
-
 
   // Читаем датчики
   // ПРОВЕРКА DHT на NaN
   float temp_dht = dht.readTemperature();
   float hum_dht = dht.readHumidity();
-  
+  Serial.printf("📡 T:%.1f H:%.1f\n", 
+    temp_dht, hum_dht);
   // Фильтр NaN
   if (isnan(temp_dht) || isnan(hum_dht)) {
     Serial.println("❌ DHT ошибка - пропускаем");
@@ -106,9 +109,10 @@ static unsigned long lastTest = 0;
   }
   
   int light = analogRead(PHOTO_PIN); // 0-1023 (0=темно, 1023=светло)
-  
+   Serial.printf("📡 T:%.1f H:%.1f L:%d | Лента:%s | Ручное:%s\n", 
+    temp_dht, hum_dht, light, strip_state?"ВКЛ":"ВЫКЛ", manualOff?"ДА":"НЕТ");
   Serial.printf("T:%.1f°C H:%.1f%% L:%d\n", temp_dht, hum_dht, light);
-  if (isnan(temp_dht) || temp_dht > 50 || temp_dht < -10) temp_dht = 25.0;
+  //if (isnan(temp_dht) || temp_dht > 50 || temp_dht < -10) temp_dht = 25.0;
   if (isnan(hum_dht) || hum_dht > 100 || hum_dht < 0) hum_dht = 50.0;
   if (light < 0 || light > 1023) light = 512;
 
@@ -120,31 +124,26 @@ static unsigned long lastTest = 0;
   unsigned long timerDuration = (timer_hours * 3600UL + timer_minutes * 60UL) * 1000UL;
   if (timerActive && (millis() - timerStart >= timerDuration)) {
     timerActive = false;
-    strip_state = false;
-    Serial.println("Таймер истёк → ЛЕНТА ВЫКЛ");
+    if (!manualOff) strip_state = false;
+    Serial.println("⏰ Таймер истёк → ЛЕНТА ВЫКЛ");
   }
 
   // === АВТОМАТИКА ЛЕНТЫ ПО ФОТОРЕЗИСТОРУ ===
-  static unsigned long lastAutoChange = 0;
-  static bool wasDark = false;
-  
-  if (millis() - lastAutoChange > MIN_DURATION_MS) {
-    bool isDark = (light < LIGHT_THRESHOLD);
-    
 
-    if (isDark && !strip_state && !manualOff) {
-      strip_state = true;
-      lastAutoChange = millis();
-      Serial.println("🌙 АВТО: включаем ленту (темно)");
-    }
 
-    else if (!isDark && strip_state) {
-      strip_state = false;
-      lastAutoChange = millis();
-      Serial.println("☀️ АВТО: выключаем ленту (светло)");
+  // ✅ АВТОМАТИКА (только если НЕ ручное управление)
+  if (!manualOff) {
+    static unsigned long lastAutoChange = 0;
+    if (millis() - lastAutoChange > MIN_DURATION_MS) {
+      bool isDark = (light < LIGHT_THRESHOLD);
+      if (isDark && !strip_state) {
+        strip_state = true; lastAutoChange = millis();
+        Serial.println("🌙 АВТО: ВКЛ (темно)");
+      } else if (!isDark && strip_state && !timerActive) {
+        strip_state = false; lastAutoChange = millis();
+        Serial.println("☀️ АВТО: ВЫКЛ (светло)");
+      }
     }
-    
-    wasDark = isDark;
   }
 
   // === ПРИМЕНЯЕМ УПРАВЛЕНИЕ ===
@@ -154,23 +153,36 @@ static unsigned long lastTest = 0;
   analogWrite(RGB_R_PIN, rgb_r);
   analogWrite(RGB_G_PIN, rgb_g);
   analogWrite(RGB_B_PIN, rgb_b);
-  digitalWrite(BUZZER_PIN, buzzer_state ? HIGH : LOW);
+  
   digitalWrite(RELAY_PIN, strip_state ? HIGH : LOW); // HIGH = реле ВКЛ
 
-  if (buzzer_state && !lastBuzzerState) {
-    Serial.println("🎵 Играем beep на зуммере!");
-    playBeep();  // мелодия ТОЛЬКО при включении кнопки
+  if (buzzer_state && !buzzerTriggered) {
+    playBeep();
+    buzzerTriggered = true;
+    Serial.println("🎵 Играем beep!");
   }
-  digitalWrite(BUZZER_PIN, LOW);  // всегда выключен после мелодии
-  lastBuzzerState = buzzer_state;
+  static bool last_buzzer_cmd = false;
+    if (buzzer_state && !last_buzzer_cmd) {
+    playBeep(); 
+    Serial.println("🎵 Играем beep!");
+  }
+  last_buzzer_cmd = buzzer_state;
+  digitalWrite(BUZZER_PIN, LOW);
+
+  //if (!buzzer_state) buzzerTriggered = false;  // Сброс при выключении
+
   
+  //lastBuzzerState = buzzer_state;
+
   // Отправляем данные в Supabase
   sendSensorData(temp_dht, hum_dht, light);
   
   // Читаем команды из Supabase
   loadControls();
   
-  delay(2000); // Цикл каждую 2 секунду
+
+
+  delay(1000); // Цикл каждую 1 секунду
 }
 
 void sendSensorData(float temp_dht, float hum_dht, int light) {
@@ -199,6 +211,9 @@ void sendSensorData(float temp_dht, float hum_dht, int light) {
     doc["timer_h"] = timer_hours;
     doc["timer_m"] = timer_minutes;
     //doc["timer_active"] = timerActive;
+    doc["timer_active"] = timerActive;
+    doc["manual_off"] = manualOff;
+
     
     String json;
     serializeJson(doc, json);
@@ -240,23 +255,21 @@ void loadControls() {
         bool newStrip = doc[0]["strip"] | false;
         buzzer_state = doc[0]["buzzer"] | false;
         timer_hours = doc[0]["timer_hours"] | 0;
-        timer_minutes = doc[0]["timer_minutes"] | 30;
+        timer_minutes = doc[0]["timer_minutes"] | 0;
     
-
         // === Ручной ТАЙМЕР ===
-        if (newStrip && !strip_state) {  // ВКЛ в интерфейсе
+        if (newStrip && !strip_state ) {  
           timerActive = true;
           timerStart = millis();
           manualOff = false;
           strip_state = true;
-           Serial.printf("⏳ Ручное ВКЛ → Таймер %d:%02d\n", timer_hours, timer_minutes);
+          Serial.printf("⏳ Ручное ВКЛ → Таймер %d:%02d\n", timer_hours, timer_minutes);
         } 
-        else if (!newStrip && strip_state && !timerActive) {
+        else if (!newStrip && strip_state ) {  
           manualOff = true;
+          timerActive = false;  //Остановить таймер
           strip_state = false;
-          Serial.println("🖐️ Ручное выключение (заблокирована автоматика)");
-        } else {
-          strip_state = newStrip;
+          Serial.println("🖐️ Ручное выкл (автоматика заблокирована)");
         }
 
 
