@@ -136,29 +136,28 @@ const updateControl = async (field, value) => {
     })
   }
 
-  // ✅ ЛОГИКА ЛЕНТЫ - 4 ЧЁТКИХ СОСТОЯНИЯ
   const getStripStatus = () => {
-    if (data.manual_off) return { 
-      text: '🖐️ РУЧНОЕ ВЫКЛ', 
-      color: 'bg-gray-600/50 hover:bg-gray-500/50 border-gray-400/50 text-gray-200',
-      action: 'ВКЛЮЧИТЬ'
-    }
-    if (data.timer_active) return { 
-      text: '⏳ ТАЙМЕР АКТИВЕН', 
-      color: 'bg-yellow-500/70 hover:bg-yellow-400/80 border-yellow-400/50 shadow-yellow-500/30',
-      action: 'ОСТАНОВИТЬ'
-    }
-    if (controls.strip) return { 
-      text: '✅ ЛЕНТА ВКЛ', 
-      color: 'bg-emerald-500/70 hover:bg-emerald-400/80 border-emerald-400/50 shadow-emerald-500/30',
-      action: 'ВЫКЛЮЧИТЬ'
-    }
-    return { 
-      text: '❌ ЛЕНТА ВЫКЛ (авто)', 
-      color: 'bg-blue-500/50 hover:bg-blue-400/60 border-blue-400/50',
-      action: 'ВКЛЮЧИТЬ'
-    }
+  // (strip_mode + timer_active)
+  const mode = data.strip_mode;
+  
+  if (mode === 'manual_off') return { 
+    text: '🖐️ ЛЕНТА ВЫКЛ (РУЧНОЕ)', 
+    color: 'bg-gray-600/50 hover:bg-gray-500/50 border-gray-400/50 text-gray-200'
   }
+  if (data.timer_active) return { 
+    text: '⏳ ТАЙМЕР АКТИВЕН', 
+    color: 'bg-yellow-500/70 hover:bg-yellow-400/80 border-yellow-400/50 shadow-yellow-500/30'
+  }
+  if (controls.strip) return { 
+    text: '✅ ЛЕНТА ВКЛ', 
+    color: 'bg-emerald-500/70 hover:bg-emerald-400/80 border-emerald-400/50 shadow-emerald-500/30'
+  }
+  return { 
+    text: '❌ ЛЕНТА ВЫКЛ (авто)', 
+    color: 'bg-blue-500/50 hover:bg-blue-400/60 border-blue-400/50'
+  }
+}
+
 
   const playBeepOnce = async () => {
     await updateControl('buzzer', true)
